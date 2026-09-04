@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-09-04
+
+### Added
+
+- Add `bump-and-release` Agent Skill in `.agents/skills/` to orchestrate version synchronization, local verification suites, changelog management, and release tagging workflows.
+
+### Fixed
+
+- Suppress Google API Key findings when loaded via `<script>` tags for the Google Maps JavaScript API in web source files.
+- Prevent SVG path coordinates and floating-point fractional numbers from being misidentified as Taiwan mobile phone numbers.
+- Score Taiwan mobile phone placeholders (such as `0912345678`, sequential digits, and repeated patterns) as low risk (`30`), hiding them under the default minimum risk threshold.
+- Ensure contextual risk keyword boost for Taiwan mobile phone numbers applies properly when sensitive keywords like `電話` or `手機` are present.
+
 ## [0.5.3] - 2026-07-19
 
 ### Fixed
