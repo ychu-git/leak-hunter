@@ -271,6 +271,17 @@ fn scan_file(root: &Path, path: &Path, options: &ScanOptions) -> FileOutcome {
             let m = caps.name("secret").or_else(|| caps.get(0));
             let Some(secret_match) = m else { continue };
             let secret = secret_match.as_str();
+            if pattern.id == "taiwan_mobile" {
+                let after = &text[secret_match.end()..];
+                if after.starts_with('.')
+                    && after[1..]
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_digit())
+                {
+                    continue;
+                }
+            }
             if let Some(validator) = pattern.validator {
                 if !validator(secret) {
                     continue;
@@ -413,7 +424,26 @@ fn risk_score(
     let lower_path = file_path.to_ascii_lowercase();
 
     if pattern_id == "taiwan_mobile" {
-        return path_adjusted_base_score(taiwan_mobile_risk_score(base, secret), &lower_path);
+        let base_score = taiwan_mobile_risk_score(base, secret);
+        if is_likely_placeholder(secret) {
+            return path_adjusted_base_score(base_score.min(30), &lower_path);
+        }
+        let mut score = i16::from(path_adjusted_base_score(base_score, &lower_path));
+        let context_window = 150;
+        let mut start_ctx = start_idx.saturating_sub(context_window);
+        while start_ctx > 0 && !text.is_char_boundary(start_ctx) {
+            start_ctx -= 1;
+        }
+        let mut end_ctx = (start_idx + secret.len() + context_window).min(text.len());
+        while end_ctx < text.len() && !text.is_char_boundary(end_ctx) {
+            end_ctx += 1;
+        }
+        let surrounding = text[start_ctx..end_ctx].to_lowercase();
+        let kws = ["手機", "電話", "mobile", "cellphone", "phone"];
+        if kws.iter().any(|kw| surrounding.contains(kw)) {
+            score = (score + 15).min(100);
+        }
+        return score.clamp(0, 100) as u8;
     }
     if pattern_id == "postgres_uri" && is_hostless_postgres_uri(secret) {
         return path_adjusted_base_score(20, &lower_path);
@@ -679,7 +709,7 @@ fn taiwan_mobile_risk_score(base: u8, secret: &str) -> u8 {
 
 fn is_strict_taiwan_mobile_format(secret: &str) -> bool {
     let bytes = secret.as_bytes();
-    matches!(bytes.len(), 10 | 11 | 12 | 13 | 15)
+    matches!(bytes.len(), 10 | 11 | 12 | 13 | 15 | 16)
         && (is_strict_local_taiwan_mobile(bytes)
             || is_strict_plus_taiwan_mobile(bytes)
             || is_strict_bare_country_taiwan_mobile(bytes))
@@ -692,15 +722,30 @@ fn is_strict_local_taiwan_mobile(bytes: &[u8]) -> bool {
             && bytes[4] == b'-'
             && bytes[..4].iter().all(u8::is_ascii_digit)
             && bytes[5..].iter().all(u8::is_ascii_digit))
+        || (bytes.len() == 12
+            && bytes.starts_with(b"09")
+            && bytes[4] == b'-'
+            && bytes[8] == b'-'
+            && bytes[..4].iter().all(u8::is_ascii_digit)
+            && bytes[5..8].iter().all(u8::is_ascii_digit)
+            && bytes[9..].iter().all(u8::is_ascii_digit))
 }
 
 fn is_strict_plus_taiwan_mobile(bytes: &[u8]) -> bool {
-    (bytes.len() == 15
+    (bytes.len() == 16
         && bytes.starts_with(b"+886-9")
         && bytes[8] == b'-'
+        && bytes[12] == b'-'
         && bytes[1..4].iter().all(u8::is_ascii_digit)
         && bytes[5..8].iter().all(u8::is_ascii_digit)
-        && bytes[9..].iter().all(u8::is_ascii_digit))
+        && bytes[9..12].iter().all(u8::is_ascii_digit)
+        && bytes[13..].iter().all(u8::is_ascii_digit))
+        || (bytes.len() == 15
+            && bytes.starts_with(b"+886-9")
+            && bytes[8] == b'-'
+            && bytes[1..4].iter().all(u8::is_ascii_digit)
+            && bytes[5..8].iter().all(u8::is_ascii_digit)
+            && bytes[9..].iter().all(u8::is_ascii_digit))
         || (bytes.len() == 13
             && bytes.starts_with(b"+8869")
             && bytes[1..].iter().all(u8::is_ascii_digit))

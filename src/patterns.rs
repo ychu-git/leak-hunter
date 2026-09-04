@@ -642,7 +642,7 @@ pub static SECRET_PATTERNS: Lazy<Vec<SecretPattern>> = Lazy::new(|| {
         SecretPattern::new(
             "taiwan_mobile",
             "Taiwan Mobile Phone Number",
-            r"(?:^|[^A-Za-z0-9])(?P<secret>(?:\+?886[- ]?|0)9(?:[- ]?[0-9]){8})\b",
+            r"(?:^|[^A-Za-z0-9.])(?P<secret>(?:\+?886[- ]?|0)9(?:\d{8}|\d{2}[- ]\d{3}[- ]\d{3}|\d{2}[- ]\d{6}|[- ]\d{4}[- ]\d{4}))\b",
             50,
         ),
         SecretPattern::new_with_validator(
@@ -922,12 +922,20 @@ pub fn is_taiwan_placeholder(secret: &str) -> bool {
     // Check Mobile placeholders
     if normalized.starts_with("09") || normalized.starts_with("8869") {
         let digits: String = normalized.chars().filter(|c| c.is_ascii_digit()).collect();
-        if digits.len() >= 10 {
-            if digits.contains("0912345678") || digits.contains("0987654321") {
+        let local_digits = if let Some(rest) = digits.strip_prefix("886") {
+            format!("0{rest}")
+        } else {
+            digits.clone()
+        };
+        if local_digits.len() == 10 && local_digits.starts_with("09") {
+            if local_digits.contains("0912345678") || local_digits.contains("0987654321") {
                 return true;
             }
-            let last_8 = &digits[digits.len() - 8..];
+            let last_8 = &local_digits[2..];
             if last_8.chars().all(|c| c == last_8.chars().next().unwrap()) {
+                return true;
+            }
+            if is_sequential_ascii_digits(last_8) || is_repeated_pattern(last_8) {
                 return true;
             }
         }
@@ -944,6 +952,32 @@ pub fn is_taiwan_placeholder(secret: &str) -> bool {
         }
     }
 
+    false
+}
+
+fn is_sequential_ascii_digits(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() < 8 {
+        return false;
+    }
+    let ascending = bytes.windows(2).all(|w| w[1] == w[0] + 1);
+    let descending = bytes.windows(2).all(|w| w[0] == w[1] + 1);
+    ascending || descending
+}
+
+fn is_repeated_pattern(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() != 8 {
+        return false;
+    }
+    let p2 = &bytes[..2];
+    if bytes.chunks(2).all(|c| c == p2) {
+        return true;
+    }
+    let p4 = &bytes[..4];
+    if bytes.chunks(4).all(|c| c == p4) {
+        return true;
+    }
     false
 }
 

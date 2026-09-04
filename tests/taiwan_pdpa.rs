@@ -129,11 +129,11 @@ fn scores_strict_taiwan_mobile_formats_at_base_risk() {
     std::fs::write(
         dir.path().join("numbers.txt"),
         [
-            "0900-000000\n",
-            "0900000000\n",
-            "+886-900-000000\n",
-            "+886900000000\n",
-            "886900000000\n",
+            "0988-123456\n",
+            "0988123456\n",
+            "+886-988-123456\n",
+            "+886988123456\n",
+            "886988123456\n",
         ]
         .concat(),
     )
@@ -158,7 +158,7 @@ fn lowers_incomplete_taiwan_mobile_formats_by_ten() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("numbers.txt"),
-        ["0900 000000\n", "0900 000 000\n", "+886 900 000000\n"].concat(),
+        ["0988 123456\n", "0988 123 456\n", "+886 988 123456\n"].concat(),
     )
     .unwrap();
 
@@ -174,6 +174,70 @@ fn lowers_incomplete_taiwan_mobile_formats_by_ten() {
 
     assert_eq!(findings.len(), 3);
     assert!(findings.iter().all(|f| f.risk_score == 40));
+}
+
+#[test]
+fn scores_taiwan_mobile_placeholders_below_default_threshold() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("placeholders.txt"),
+        [
+            "0912345678\n",
+            "0987654321\n",
+            "0900000000\n",
+            "0911111111\n",
+            "+886-912-345-678\n",
+        ]
+        .concat(),
+    )
+    .unwrap();
+
+    // Default min_risk is 40; placeholders should be scored 30 (Low) and suppressed from default output
+    let opts = options();
+    let result = scan_path(dir.path(), &opts).unwrap();
+    let findings: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.finding_type == "taiwan_mobile")
+        .collect();
+    assert_eq!(findings.len(), 0);
+
+    let mut opts_all = options();
+    opts_all.min_risk = 0;
+    opts_all.redact = false;
+    let result_all = scan_path(dir.path(), &opts_all).unwrap();
+    let findings_all: Vec<_> = result_all
+        .findings
+        .iter()
+        .filter(|f| f.finding_type == "taiwan_mobile")
+        .collect();
+    assert_eq!(findings_all.len(), 5);
+    assert!(findings_all.iter().all(|f| f.risk_score == 30));
+}
+
+#[test]
+fn does_not_match_svg_coordinates_or_floats_as_taiwan_mobile() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("icon.svg"),
+        r#"<path d="M192.234,50.622 C196.707332,67.0920134 196.077005,69.5116559 195.101,71.667 Z" />"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("floats.txt"),
+        "67.0988123456\n123.0912345678\n0988123456.99\n",
+    )
+    .unwrap();
+
+    let mut opts = options();
+    opts.min_risk = 0;
+    let result = scan_path(dir.path(), &opts).unwrap();
+    let findings: Vec<_> = result
+        .findings
+        .iter()
+        .filter(|f| f.finding_type == "taiwan_mobile")
+        .collect();
+    assert_eq!(findings.len(), 0);
 }
 
 #[test]
@@ -322,4 +386,14 @@ fn applies_taiwan_pdpa_contextual_risk_boost() {
         .find(|f| f.file_path.contains("with_kw"))
         .unwrap();
     assert_eq!(finding_with.risk_score, 100); // 85 + 15 = 100
+
+    // 3. Mobile phone with keywords (電話)
+    std::fs::write(dir.path().join("mobile_kw.txt"), "電話：0988123456").unwrap();
+    let result_mobile = scan_path(dir.path(), &opts).unwrap();
+    let finding_mobile = result_mobile
+        .findings
+        .iter()
+        .find(|f| f.file_path.contains("mobile_kw"))
+        .unwrap();
+    assert_eq!(finding_mobile.risk_score, 65); // 50 + 15 = 65
 }
