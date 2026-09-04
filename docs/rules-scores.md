@@ -118,6 +118,8 @@
     *   基礎分數為 `65`；即使位於 `README` 或 `docs/` 路徑並扣除 25 分，仍為 `40` 分，可在預設門檻顯示。
 *   **Google API Key 於 Firebase 的扣分**：
     *   當規則為 `google_api_key`，且檔案路徑包含 `firebase`、`google-services.json`、`googleservice-info.plist` 或內容含 `firebaseconfig` 時，因通常為公開設定，分數 **`-55`**。
+*   **Google Maps JavaScript API 前端腳本載入抑制**：
+    *   當規則為 `google_api_key`，且處於透過 `<script>` 標籤或前端腳本載入 Google Maps JavaScript API（如引用 `maps.googleapis.com` 或 `maps/api/js`）之上下文時，因金鑰為公開前端用戶端設定並依賴 HTTP 參照位址限制，系統予以完全抑制，不產生任何 finding。
 *   **AWS Access Key ID 存在 Secret Key 的加成**：
     *   當規則為 `aws_access_key_id`，且同一檔案中亦偵測到 `secret_access_key` 關鍵字時，分數 **`+10`**。
 *   **Compose PostgreSQL 環境變數插值抑制**：

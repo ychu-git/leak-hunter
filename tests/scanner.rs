@@ -443,6 +443,28 @@ fn lowers_google_api_key_risk_in_firebase_context() {
 }
 
 #[test]
+fn suppresses_google_api_key_in_google_maps_script_tag() {
+    let dir = tempfile::tempdir().unwrap();
+    let key = ["AIza", "abcdefghijklmnopqrstuvwxyzABCDEFGHI"].concat();
+    std::fs::write(
+        dir.path().join("traffic.html"),
+        format!("<script src=\"https://maps.googleapis.com/maps/api/js?key={key}&callback=initMap\" async defer></script>\n"),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("traffic.aspx"),
+        format!("<%--<script src=\"//maps.googleapis.com/maps/api/js?key={key}&callback=initMap\"></script>--%>\n"),
+    )
+    .unwrap();
+
+    let mut opts = options();
+    opts.min_risk = 0;
+    opts.redact = false;
+    let result = scan_path(dir.path(), &opts).unwrap();
+    assert_eq!(result.summary.findings, 0);
+}
+
+#[test]
 fn lowers_risk_for_python_site_packages_files() {
     let dir = tempfile::tempdir().unwrap();
     let package_dir = dir.path().join("lib/python3.11/site-packages/vendor_pkg");

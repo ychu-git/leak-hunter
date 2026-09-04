@@ -287,7 +287,7 @@ fn scan_file(root: &Path, path: &Path, options: &ScanOptions) -> FileOutcome {
                     continue;
                 }
             }
-            if should_suppress(pattern.id, &rel, &text, secret) {
+            if should_suppress(pattern.id, &rel, &text, secret, secret_match.start()) {
                 continue;
             }
             let secret_entropy = shannon_entropy(secret);
@@ -346,7 +346,13 @@ fn is_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(8192).any(|b| *b == 0)
 }
 
-fn should_suppress(pattern_id: &str, file_path: &str, text: &str, secret: &str) -> bool {
+fn should_suppress(
+    pattern_id: &str,
+    file_path: &str,
+    text: &str,
+    secret: &str,
+    start_idx: usize,
+) -> bool {
     let lower = file_path.to_ascii_lowercase();
     if lower.ends_with("package-lock.json") && text.contains("\"integrity\"") {
         return true;
@@ -357,6 +363,44 @@ fn should_suppress(pattern_id: &str, file_path: &str, text: &str, secret: &str) 
     {
         return true;
     }
+    if pattern_id == "google_api_key"
+        && is_google_maps_script_tag_context(text, start_idx, secret.len())
+    {
+        return true;
+    }
+    false
+}
+
+fn is_google_maps_script_tag_context(text: &str, start_idx: usize, secret_len: usize) -> bool {
+    let window = 250;
+    let mut start_ctx = start_idx.saturating_sub(window);
+    while start_ctx > 0 && !text.is_char_boundary(start_ctx) {
+        start_ctx -= 1;
+    }
+    let mut end_ctx = (start_idx + secret_len + window).min(text.len());
+    while end_ctx < text.len() && !text.is_char_boundary(end_ctx) {
+        end_ctx += 1;
+    }
+    let surrounding = text[start_ctx..end_ctx].to_ascii_lowercase();
+
+    let has_maps_host =
+        surrounding.contains("maps.googleapis.com") || surrounding.contains("maps.google.com");
+    let has_maps_script = surrounding.contains("maps/api/js");
+
+    let is_script_context = surrounding.contains("<script")
+        || surrounding.contains("script.src")
+        || surrounding.contains("script.setattribute")
+        || surrounding.contains("google.maps.load")
+        || surrounding.contains("@googlemaps/js-api-loader");
+
+    if (has_maps_host || has_maps_script) && is_script_context {
+        return true;
+    }
+
+    if has_maps_host && has_maps_script {
+        return true;
+    }
+
     false
 }
 
