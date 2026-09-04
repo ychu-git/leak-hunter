@@ -3,6 +3,9 @@ name: Publish npm
 on:
   release:
     types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -12,8 +15,17 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'release') ||
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.event.release.tag_name || github.ref }}
 
       - uses: actions/setup-node@v5
         with:
@@ -33,7 +45,28 @@ jobs:
           VERSION="${VERSION#v}"
           npm version "$VERSION" --no-git-tag-version
 
-      - run: npm publish --provenance --access public
+      - name: Align npm version with workflow_run tag
+        if: github.event_name == 'workflow_run'
+        run: |
+          VERSION="${{ github.event.workflow_run.head_branch }}"
+          VERSION="${VERSION#v}"
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Check if version is already published
+        id: check_published
+        run: |
+          TARGET_VERSION="$(node -p "require('./package.json').version")"
+          PUBLISHED_VERSION="$(npm view leak-hunter version --registry=https://registry.npmjs.org/ 2>/dev/null || true)"
+          if [ "$TARGET_VERSION" = "$PUBLISHED_VERSION" ]; then
+            echo "Version $TARGET_VERSION is already published to npm. Skipping publish."
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: steps.check_published.outputs.already_published != 'true'
+        run: npm publish --provenance --access public
         env:
           LEAK_HUNTER_RELEASE_ASSET_RETRIES: 12
           LEAK_HUNTER_RELEASE_ASSET_RETRY_DELAY_MS: 10000

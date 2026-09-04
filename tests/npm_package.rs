@@ -6,6 +6,7 @@ fn npm_publish_workflow_uses_trusted_publishing_and_updates_npm() {
     assert!(workflow.contains("github.event.release.tag_name"));
     assert!(workflow.contains("npm publish --provenance --access public"));
     assert!(workflow.contains("LEAK_HUNTER_RELEASE_ASSET_RETRIES"));
+    assert!(workflow.contains("workflows: [\"Release\"]"));
     assert!(!workflow.contains("NPM_TOKEN"));
 }
 

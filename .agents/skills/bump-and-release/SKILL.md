@@ -151,7 +151,7 @@ git commit -m "chore(release): 準備 ${NEW_VERSION} 發布" -m "同步 Rust cra
 
 ---
 
-### Step 7: Post-Release CI/CD & npm Publishing
+### Step 7: Automated Post-Release CI/CD & npm Publishing
 
 1. **GitHub Actions `Release` workflow** starts automatically upon pushing `v${NEW_VERSION}`:
    - `cargo-dist` builds binaries on GitHub runners:
@@ -161,19 +161,16 @@ git commit -m "chore(release): 準備 ${NEW_VERSION} 發布" -m "同步 Rust cra
      - `x86_64-pc-windows-msvc` (Windows x64)
    - Generates checksums (`.sha256`) and installers (`.sh`, `.ps1`).
    - Automatically parses `CHANGELOG.md` for section `## [X.Y.Z]` and creates the official GitHub Release.
+2. **GitHub Actions `Publish npm` workflow** triggers automatically via `workflow_run`:
+   - Configured with `on: workflow_run: workflows: ["Release"], types: [completed]`.
+   - As soon as the `Release` workflow completes successfully, GitHub Actions automatically runs `Publish npm`.
+   - Verifies the 8 release assets via `npm/prepublish-check.cjs`.
+   - Publishes `leak-hunter@${NEW_VERSION}` to npm with OIDC Trusted Publishing and provenance.
+   - Includes idempotency guard to prevent publishing twice if already published.
 
-> [!IMPORTANT]
-> **GitHub Actions GITHUB_TOKEN Event Suppression**:
-> When `cargo-dist` creates and publishes the GitHub Release, it runs under the default `GITHUB_TOKEN` (`github-actions[bot]`). GitHub Actions intentionally suppresses downstream workflow triggers (such as `on: release: types: [published]`) created by `GITHUB_TOKEN` to prevent recursive execution loops.
->
-> Therefore, once the `Release` workflow finishes building and publishing the GitHub Release assets, trigger `npm-publish.yml` via `workflow_dispatch`:
+> [!TIP]
+> You can track progress with:
 > ```bash
-> # 1. Wait for Release workflow to finish
 > gh run watch <release-run-id>
->
-> # 2. Trigger the Publish npm workflow targeting the newly created tag
-> gh workflow run npm-publish.yml --ref "v${NEW_VERSION}"
->
-> # 3. Confirm npm publication
 > npm view leak-hunter version
 > ```
