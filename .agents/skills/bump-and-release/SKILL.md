@@ -151,10 +151,9 @@ git commit -m "chore(release): 準備 ${NEW_VERSION} 發布" -m "同步 Rust cra
 
 ---
 
-### Step 7: Post-Release CI/CD Verification
+### Step 7: Post-Release CI/CD & npm Publishing
 
-Inform the user about the automated downstream pipelines:
-1. **GitHub Actions `Release` workflow** will start automatically upon pushing `v${NEW_VERSION}`:
+1. **GitHub Actions `Release` workflow** starts automatically upon pushing `v${NEW_VERSION}`:
    - `cargo-dist` builds binaries on GitHub runners:
      - `aarch64-apple-darwin` (macOS 15 Apple Silicon)
      - `x86_64-apple-darwin` (macOS 15 Intel)
@@ -162,7 +161,19 @@ Inform the user about the automated downstream pipelines:
      - `x86_64-pc-windows-msvc` (Windows x64)
    - Generates checksums (`.sha256`) and installers (`.sh`, `.ps1`).
    - Automatically parses `CHANGELOG.md` for section `## [X.Y.Z]` and creates the official GitHub Release.
-2. **GitHub Actions `Publish npm` workflow**:
-   - Triggers as soon as the GitHub Release is published.
-   - Waits for release assets via `npm/prepublish-check.cjs`.
-   - Publishes `leak-hunter@${NEW_VERSION}` to npm with OIDC Trusted Publishing and provenance.
+
+> [!IMPORTANT]
+> **GitHub Actions GITHUB_TOKEN Event Suppression**:
+> When `cargo-dist` creates and publishes the GitHub Release, it runs under the default `GITHUB_TOKEN` (`github-actions[bot]`). GitHub Actions intentionally suppresses downstream workflow triggers (such as `on: release: types: [published]`) created by `GITHUB_TOKEN` to prevent recursive execution loops.
+>
+> Therefore, once the `Release` workflow finishes building and publishing the GitHub Release assets, trigger `npm-publish.yml` via `workflow_dispatch`:
+> ```bash
+> # 1. Wait for Release workflow to finish
+> gh run watch <release-run-id>
+>
+> # 2. Trigger the Publish npm workflow targeting the newly created tag
+> gh workflow run npm-publish.yml --ref "v${NEW_VERSION}"
+>
+> # 3. Confirm npm publication
+> npm view leak-hunter version
+> ```
